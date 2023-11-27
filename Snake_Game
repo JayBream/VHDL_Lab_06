@@ -5,22 +5,31 @@
 -- 
 ------------------------------------------------------------------------------------------------------
 
+
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-use ieee.numeric_std.all;
-entity Snake_Game is
-  Port(switches : STD_LOGIC_VECTOR(15 downto 0);
-    reset	: in STD_LOGIC;
-    clock	: in STD_LOGIC;
-    ledOut: out STD_LOGIC_VECTOR (15 downto 0);
-    anodes: out STD_LOGIC_VECTOR (3 downto 0);
-    sevenSegs: out STD_LOGIC_VECTOR (6 downto 0)
-  
-  );
-end Snake_Game;
 
-architecture Behavioral of Snake_Game is
-  --general definitions--
+-- Uncomment the following library declaration if using
+-- arithmetic functions with Signed or Unsigned values
+--use IEEE.NUMERIC_STD.ALL;
+
+-- Uncomment the following library declaration if instantiating
+-- any Xilinx leaf cells in this code.
+--library UNISIM;
+--use UNISIM.VComponents.all;
+
+entity SnakeGame is
+    Port ( switches : in STD_LOGIC_VECTOR (15 downto 0);
+           leds : out STD_LOGIC_VECTOR (15 downto 0);
+           segsout : out STD_LOGIC_VECTOR (6 downto 0);
+           anodes : out STD_LOGIC_VECTOR (3 downto 0);
+           reset : in STD_LOGIC;
+           clock : in STD_LOGIC);
+end SnakeGame;
+
+architecture Behavioral of SnakeGame is
+--general definitions--
   constant ACTIVE: std_logic := '1';  
   constant COUNT_1HZ: integer := (100/8)-1;
   --Seven Segment Driver constants--
@@ -48,5 +57,45 @@ architecture Behavioral of Snake_Game is
     constant B_7SEG: std_logic_vector(6 downto 0)     := "0000011";
     constant C_7SEG: std_logic_vector(6 downto 0)     := "1000110";
     constant D_7SEG: std_logic_vector(6 downto 0)     := "0100001";
+    constant E_7SEG: std_logic_vector(6 downto 0)     := "0000110";
+    constant F_7SEG: std_logic_vector(6 downto 0)     := "0001110";
+    -- other Signals--
+    signal synchOut: std_logic_vector (15 downto 0);
+    signal chopEn: std_logic;
+    signal position: integer;
+    signal errorEn: std_logic;
+    signal snakeMiss: std_logic;
+    signal headHit: std_logic;
+    signal tailHit: std_logic;
+    signal shiftLeftMode: std_logic;
+    signal shiftRightMode: std_logic;
+    signal wrapLeftMode: std_logic;
+    signal wrapRightMode: std_logic;
+    signal bounceLeftMode: std_logic;
+    signal bounceRightMode: std_logic;
+    signal subTailRightEn: std_logic;
+    signal subHeadRightEn: std_logic;
+    signal subTailLeftEn: std_logic;
+    signal subHeadLeftEn: std_logic;
+    signal startMode: std_logic;   
+    signal winMode: std_logic;
+    signal loseMode: std_logic;
+    signal edgeMode: std_logic;
+    signal snakeEn: std_logic;
+    signal countEn: std_logic;
+    signal head: integer;
+    signal tail: integer;
+    signal timeOut: std_logic_vector (15 downto 0);
+    --state machine signals--
+    type States_t is (START, MOVE_RIGHT, RIGHT_EDGE, BOUNCE_RIGHT, WRAP_RIGHT, 
+    MOVE_LEFT, WRAP_LEFT, SUB_TAIL_LEFT, SUB_HEAD_LEFT, ADD_SNAKE, SUB_HEAD_RIGHT,
+    SUB_TAIL_RIGHT,BOUNCE_LEFT,LEFT_EDGE);
+    signal currentState: States_t;
+    signal nextState: States_t;
+begin
+    
+
+end Behavioral;
+
     constant E_7SEG: std_logic_vector(6 downto 0)     := "0000110";
     constant F_7SEG: std_logic_vector(6 downto 0)     := "0001110";
