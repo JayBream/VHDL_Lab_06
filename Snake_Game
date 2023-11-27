@@ -1,15 +1,30 @@
-------------------------------------------------------------------------------------------------------
--- Name: Snake_Game
--- Engineers: Gabriel Richmond and Jaden Bryant
---
+----------------------------------------------------------------------------------
+-- Company: 
+-- Engineer: 
 -- 
-------------------------------------------------------------------------------------------------------
-
+-- Create Date: 11/27/2023 03:01:53 PM
+-- Design Name: 
+-- Module Name: SnakeGame - Behavioral
+-- Project Name: 
+-- Target Devices: 
+-- Tool Versions: 
+-- Description: 
+-- 
+-- Dependencies: 
+-- 
+-- Revision:
+-- Revision 0.01 - File Created
+-- Additional Comments:
+-- 
+----------------------------------------------------------------------------------
 
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.STD_LOGIC_ARITH.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL;
 -- Uncomment the following library declaration if using
 -- arithmetic functions with Signed or Unsigned values
 --use IEEE.NUMERIC_STD.ALL;
@@ -25,13 +40,16 @@ entity SnakeGame is
            segsout : out STD_LOGIC_VECTOR (6 downto 0);
            anodes : out STD_LOGIC_VECTOR (3 downto 0);
            reset : in STD_LOGIC;
-           clock : in STD_LOGIC);
+           clock : in STD_LOGIC
+           );
+           
 end SnakeGame;
 
 architecture Behavioral of SnakeGame is
---general definitions--
-  constant ACTIVE: std_logic := '1';  
-  constant COUNT_1HZ: integer := (100/8)-1;
+    --general definitions--
+    constant ACTIVE: std_logic := '1';
+    constant LONG_ACTIVE: std_logic_vector (15 downto 0) := "0000000000000000";  
+    constant COUNT_4HZ: integer := (100000000/4)-1;
   --Seven Segment Driver constants--
     constant COUNT_1KHZ: integer := (100000000/1000)-1;
     constant SELECT_DIGIT_0: std_logic_vector(3 downto 0)   := "1110";
@@ -73,6 +91,9 @@ architecture Behavioral of SnakeGame is
     signal wrapRightMode: std_logic;
     signal bounceLeftMode: std_logic;
     signal bounceRightMode: std_logic;
+    signal pulseOutChop: std_logic;
+    signal pulseOutPosition: integer;
+    signal pulseOutError: std_logic;
     signal subTailRightEn: std_logic;
     signal subHeadRightEn: std_logic;
     signal subTailLeftEn: std_logic;
@@ -83,6 +104,8 @@ architecture Behavioral of SnakeGame is
     signal edgeMode: std_logic;
     signal snakeEn: std_logic;
     signal countEn: std_logic;
+    signal unsafeOutput: std_logic_vector (15 downto 0);
+    signal activeBits : INTEGER;
     signal head: integer;
     signal tail: integer;
     signal timeOut: std_logic_vector (15 downto 0);
@@ -93,9 +116,151 @@ architecture Behavioral of SnakeGame is
     signal currentState: States_t;
     signal nextState: States_t;
 begin
-    
-
+ --==================================================================================
+ --SYNCH
+ --==================================================================================
+  SYNC_CHAIN: process(reset, clock)    
+	variable unsafeOutput: std_logic_vector (15 downto 0); 
+begin    
+	if (reset=ACTIVE) then        
+		synchOut   <= not LONG_ACTIVE;        
+		unsafeOutput := not LONG_ACTIVE;    
+	elsif (rising_edge(clock)) then        
+		synchOut   <= unsafeOutput;        
+		unsafeOutput := switches;    
+	end if; 	
+end process;
+--==================================================================================
+--AXE TIME
+--==================================================================================  
+  AXETIME: process(synchOut)
+    begin
+        activeBits <= 0;
+        Position <= 0;
+        for i in 0 to 15 loop
+            if synchOut(i) = '1' then
+                activeBits <= activeBits + 1;
+                Position <= i;
+            end if;
+        end loop;
+        if activeBits = 1 and synchOut(Position) = '1' then
+            chopEn <= '1';
+            position <= Position;
+            errorEn <= '0';
+        elsif activeBits >= 2 then
+            chopEn <= '0';
+            position <= 0;  
+            errorEn <= '1';
+        else
+            chopEn <= '0';
+            position <= 0;
+            errorEn <= '0';
+        end if;
+    end process;
+--==================================================================================
+--LEVEL DETECT CHOP
+--==================================================================================  
+    process(reset, clock)
+        variable held: std_logic;
+    begin
+        if (reset=ACTIVE) then
+            pulseOutChop <= not ACTIVE;
+            held        := not ACTIVE;
+        elsif (rising_edge(clock)) then
+            pulseOutChop <= not ACTIVE;
+            if (chopEn=ACTIVE) then
+                if (held = not ACTIVE) then
+                    pulseOutChop <= ACTIVE;
+                    held        := ACTIVE;
+                end if;
+            else
+                held := not ACTIVE;
+            end if;
+        end if;
+    end process;
+--==================================================================================
+--LEVEL DETECT POSITION
+--==================================================================================  
+    process(reset, clock)
+        variable held: std_logic;
+    begin
+        if (reset=ACTIVE) then
+            pulseOutPosition <= 16;
+            held        := not ACTIVE;
+        elsif (rising_edge(clock)) then
+            pulseOutPosition <= 16;
+            if (chopEn=ACTIVE) then
+                if (held = not ACTIVE) then
+                    pulseOutPosition <= Position;
+                    held        := ACTIVE;
+                end if;
+            else
+                held := not ACTIVE;
+            end if;
+        end if;
+    end process;
+--==================================================================================
+--LEVEL DETECT ERROR
+--==================================================================================  
+    process(reset, clock)
+        variable held: std_logic;
+    begin
+        if (reset=ACTIVE) then
+            pulseOutError <= not ACTIVE;
+            held        := not ACTIVE;
+        elsif (rising_edge(clock)) then
+            pulseOutError <= not ACTIVE;
+            if (ErrorEn=ACTIVE) then
+                if (held = not ACTIVE) then
+                    pulseOutError <= ACTIVE;
+                    held        := ACTIVE;
+                end if;
+            else
+                held := not ACTIVE;
+            end if;
+        end if;
+    end process;
+--==================================================================================
+--HIT OR MISS
+--==================================================================================  
+HIT_OR_MISS: process(pulseOutError, pulseOutChop, pulseOutPosition)
+    begin
+        if(pulseOutError = ACTIVE) then
+            snakeMiss <= ACTIVE;
+        elsif(pulseOutChop = ACTIVE and head = position) then
+            headHit <= ACTIVE;
+        elsif(pulseOutChop = ACTIVE and tail = position) then
+            tailHit <= ACTIVE;
+        elsif(pulseOutChop = ACTIVE and tail /= position and head /= position) then
+            snakeMiss <= ACTIVE;
+        else 
+            snakeMiss <= not ACTIVE;
+            headHit <= not ACTIVE;
+            tailHit <= not ACTIVE;
+        end if;       
+    end process;
+       
+--==================================================================================
+--FOUR HZ
+--==================================================================================     
+Four_HZ: process(reset, clock)
+    variable count: integer range 0 to COUNT_4HZ; 
+begin
+    if (reset = ACTIVE) then
+        count := 0;
+     elsif (rising_edge(clock)) then
+        if(count = COUNT_4HZ) then
+            count := 0;
+        else
+            count := count +1;
+        end if;
+     end if;
+     snakeEn <= not ACTIVE;
+     if(count = COUNT_4HZ) then
+        snakeEn <= ACTIVE;
+     end if;
+end process;
+--==================================================================================
+--EDGE SWAP
+--==================================================================================    
 end Behavioral;
-
-    constant E_7SEG: std_logic_vector(6 downto 0)     := "0000110";
-    constant F_7SEG: std_logic_vector(6 downto 0)     := "0001110";
