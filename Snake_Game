@@ -713,6 +713,8 @@ end process;
     when others =>
      seconds <= "00000000";
 end case;
+  digit1  <= seconds(7 downto 4);
+  digit0  <= seconds(3 downto 0);
  end process;    
 --==================================================================================
 --MINUTES_TO_7SEG
@@ -846,5 +848,7 @@ end case;
     when others =>
      minutes <= "00000000";
  end case;
+  digit4  <= minutes(7 downto 4);
+  digit3  <= minutes(3 downto 0);
  end process; 
 end Behavioral;
