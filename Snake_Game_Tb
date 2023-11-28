@@ -1,1 +1,96 @@
+----------------------------------------------------------------------------------
+-- Company: 
+-- Engineer: 
+-- 
+-- Create Date: 11/28/2023 12:27:57 AM
+-- Design Name: 
+-- Module Name: SnakeGame_Testbench - Behavioral
+-- Project Name: 
+-- Target Devices: 
+-- Tool Versions: 
+-- Description: 
+-- 
+-- Dependencies: 
+-- 
+-- Revision:
+-- Revision 0.01 - File Created
+-- Additional Comments:
+-- 
+----------------------------------------------------------------------------------
 
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+-- Uncomment the following library declaration if using
+-- arithmetic functions with Signed or Unsigned values
+--use IEEE.NUMERIC_STD.ALL;
+
+-- Uncomment the following library declaration if instantiating
+-- any Xilinx leaf cells in this code.
+--library UNISIM;
+--use UNISIM.VComponents.all;
+
+entity SnakeGame_Testbench is
+
+end SnakeGame_Testbench;
+
+architecture Behavioral of SnakeGame_Testbench is
+signal switches: std_logic_vector (15 downto 0);
+signal reset: std_logic;
+signal clock: std_logic;
+signal leds: std_logic_vector(15 downto 0);
+signal segsout: std_logic_vector(6 downto 0);
+signal anodes: std_logic_vector (3 downto 0);
+
+constant CLOCKPERIOD: time := 10ns;
+constant ACTIVE : std_logic := '1';
+begin
+UUT: entity work.SnakeGame
+port map (
+    switches => switches,
+    reset => reset,
+    clock => clock,
+    leds => leds,
+    segsout => segsout,
+    anodes => anodes
+);
+
+process
+begin
+    while now < 22000ms loop
+        clock <= '0';
+        wait for CLOCKPERIOD / 2;
+        clock <= '1';
+        wait for CLOCKPERIOD /2;
+    end loop;
+end process;
+
+process
+begin
+    reset <= '1';
+    wait for CLOCKPERIOD;
+    reset <= not ACTIVE;
+    wait for 10ns;
+    switches(15 downto 2) <= (others => '0');
+    switches(0) <= not ACTIVE;
+    switches(1) <= ACTIVE;
+    wait for 10ns;
+   
+    wait for 10ns;
+  
+    switches(1)<= not ACTIVE;
+    wait for 10ns;
+    switches(1) <= ACTIVE;
+    switches(2) <= ACTIVE;
+    wait for 10ns;
+    switches(1) <= not ACTIVE;
+    switches(2) <= not ACTIVE;
+    wait until leds(10) = ACTIVE;
+    switches(10) <= ACTIVE;
+    wait for 10ns;
+    wait;
+end process;
+    
+    
+end Behavioral;
