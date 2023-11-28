@@ -560,7 +560,26 @@ begin
     tail <= temp_tail;
     leds <= tempLEDs;
 end process;
-
-    
+--==================================================================================
+--TIME_COUNTER
+--================================================================================== 
+ TIME_COUNTER: process(loseMode, winMode, startMode, countEn)
+ begin
+ 	if startMode = ACTIVE or loseMode = ACTIVE then
+    	seconds <= 0;
+        minutes <= 0;
+    elsif rising_edge(clock) then
+    	if countEn = ACTIVE
+        	if seconds = 59 then
+            	seconds <= 0;
+            	if minutes = 59 then
+            		minutes <= 0;
+                else minutes <= minutes + 1;
+                end if;
+           else seconds <= seconds +1;
+      	   end if;
+        end if;
+   end if;
+end process;    
     
     end Behavioral;
