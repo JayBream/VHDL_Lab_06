@@ -1,540 +1,565 @@
-
-
-
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.STD_LOGIC_ARITH.ALL;
-use IEEE.STD_LOGIC_UNSIGNED.ALL;
--- Uncomment the following library declaration if using
--- arithmetic functions with Signed or Unsigned values
---use IEEE.NUMERIC_STD.ALL;
-
--- Uncomment the following library declaration if instantiating
--- any Xilinx leaf cells in this code.
---library UNISIM;
---use UNISIM.VComponents.all;
-
-entity SnakeGame is
-    Port ( switches : in STD_LOGIC_VECTOR (15 downto 0);
-           leds : out STD_LOGIC_VECTOR (15 downto 0);
-           segsout : out STD_LOGIC_VECTOR (6 downto 0);
-           anodes : out STD_LOGIC_VECTOR (3 downto 0);
-           reset : in STD_LOGIC;
-           clock : in STD_LOGIC
-           );
-           
-end SnakeGame;
-
-architecture Behavioral of SnakeGame is
-    --general definitions--
-    constant ACTIVE: std_logic := '1';
-    constant LONG_ACTIVE: std_logic_vector (15 downto 0) := "0000000000000000";  
-    constant COUNT_4HZ: integer := (100/4)-1;
-    constant COUNT_1HZ: integer := (100/1)-1;
-    constant speed: integer := (100/8)-1;
-    constant bounce: std_logic := '0';
-    constant wrap: std_logic := '1';
-  --Seven Segment Driver constants--
-    constant COUNT_1KHZ: integer := (100000000/1000)-1;
-    constant SELECT_DIGIT_0: std_logic_vector(3 downto 0)   := "1110";
-    constant SELECT_DIGIT_1: std_logic_vector(3 downto 0)   := "1101";
-    constant SELECT_DIGIT_2: std_logic_vector(3 downto 0)   := "1011";
-    constant SELECT_DIGIT_3: std_logic_vector(3 downto 0)   := "0111";
-    constant SELECT_NO_DIGITS: std_logic_vector(3 downto 0) := "1111";
-    constant blank0: std_logic := '0';
-    constant blank1: std_logic  := '1';
-    constant blank2: std_logic  := '1';
-    constant blank3: std_logic := '0';
-    constant ZERO_7SEG: std_logic_vector(6 downto 0)  := "1000000";
-    constant ONE_7SEG: std_logic_vector(6 downto 0)   := "1111001";
-    constant TWO_7SEG: std_logic_vector(6 downto 0)   := "0100100";
-    constant THREE_7SEG: std_logic_vector(6 downto 0) := "0110000";
-    constant FOUR_7SEG: std_logic_vector(6 downto 0)  := "0011001";
-    constant FIVE_7SEG: std_logic_vector(6 downto 0)  := "0010010";
-    constant SIX_7SEG: std_logic_vector(6 downto 0)   := "0000010";
-    constant SEVEN_7SEG: std_logic_vector(6 downto 0) := "1111000";
-    constant EIGHT_7SEG: std_logic_vector(6 downto 0) := "0000000";
-    constant NINE_7SEG: std_logic_vector(6 downto 0)  := "0011000";
-    constant A_7SEG: std_logic_vector(6 downto 0)     := "0001000";
-    constant B_7SEG: std_logic_vector(6 downto 0)     := "0000011";
-    constant C_7SEG: std_logic_vector(6 downto 0)     := "1000110";
-    constant D_7SEG: std_logic_vector(6 downto 0)     := "0100001";
-    constant E_7SEG: std_logic_vector(6 downto 0)     := "0000110";
-    constant F_7SEG: std_logic_vector(6 downto 0)     := "0001110";
-    constant START_LED:  std_logic_vector(15 downto 0):="0000111111110000";  
-    constant ALL_LED:  std_logic_vector(15 downto 0):="1111111111111111";
-    constant NONE_LED:  std_logic_vector(15 downto 0):="0000000000000000";
-    -- other Signals--
-    signal synchOut: std_logic_vector (15 downto 0);
-    signal chopEn: std_logic;
-    signal position: integer;
-    signal errorEn: std_logic;
-    signal count: integer range 0 to COUNT_1HZ;
-    signal snakeMiss: std_logic;
-    signal headHit: std_logic;
-    signal tailHit: std_logic;
-    signal shiftLeftMode: std_logic;
-    signal shiftRightMode: std_logic;
-    signal wrapLeftMode: std_logic;
-    signal wrapRightMode: std_logic;
-    signal bounceLeftMode: std_logic;
-    signal bounceRightMode: std_logic;
-    signal pulseOutChop: std_logic;
-    signal pulseOutPosition: integer;
-    signal pulseOutError: std_logic;
-    signal subTailRightEn: std_logic;
-    signal subHeadRightEn: std_logic;
-    signal subTailLeftEn: std_logic;
-    signal subHeadLeftEn: std_logic;
-    signal addSnakeEn: std_logic;
-    signal startMode: std_logic;   
-    signal winMode: std_logic;
-    signal loseMode: std_logic;
-    signal edgeMode: std_logic;
-    signal snakeEn: std_logic := '0';
-    signal countEn: std_logic;
-    signal unsafeOutput: std_logic_vector (15 downto 0);
     
-    signal head: integer;
-    signal tail: integer;
-    signal timeOut: std_logic_vector (15 downto 0);
-    --state machine signals--
-    type States_t is (START, MOVE_RIGHT, RIGHT_EDGE, BOUNCE_RIGHT, WRAP_RIGHT, 
-    MOVE_LEFT, WRAP_LEFT, SUB_TAIL_LEFT, SUB_HEAD_LEFT, ADD_SNAKE_RIGHT, ADD_SNAKE_LEFT, SUB_HEAD_RIGHT,
-    SUB_TAIL_RIGHT,BOUNCE_LEFT,LEFT_EDGE, WIN_MODE, LOSE_MODE);
-    signal currentState: States_t;
-    signal nextState: States_t;
-begin
- --==================================================================================
- --SYNCH
- --==================================================================================
-  SYNC_CHAIN: process(reset, clock)    
-	variable unsafeOutput: std_logic_vector (15 downto 0); 
-begin    
-	if (reset=ACTIVE) then        
-		synchOut   <= not LONG_ACTIVE;        
-		unsafeOutput := not LONG_ACTIVE;    
-	elsif (rising_edge(clock)) then        
-		synchOut   <= unsafeOutput;        
-		unsafeOutput := switches;    
-	end if; 	
-end process;
---==================================================================================
---AXE TIME
---==================================================================================  
-  AXETIME: process(synchOut)
-    variable activeBits: integer;
+    
+    
+    library IEEE;
+    use IEEE.STD_LOGIC_1164.ALL;
+    library IEEE;
+    use IEEE.STD_LOGIC_1164.ALL;
+    use IEEE.STD_LOGIC_ARITH.ALL;
+    use IEEE.STD_LOGIC_UNSIGNED.ALL;
+    -- Uncomment the following library declaration if using
+    -- arithmetic functions with Signed or Unsigned values
+    --use IEEE.NUMERIC_STD.ALL;
+    
+    -- Uncomment the following library declaration if instantiating
+    -- any Xilinx leaf cells in this code.
+    --library UNISIM;
+    --use UNISIM.VComponents.all;
+    
+    entity SnakeGame is
+        Port ( switches : in STD_LOGIC_VECTOR (15 downto 0);
+               leds : out STD_LOGIC_VECTOR (15 downto 0);
+               segsout : out STD_LOGIC_VECTOR (6 downto 0);
+               anodes : out STD_LOGIC_VECTOR (3 downto 0);
+               reset : in STD_LOGIC;
+               clock : in STD_LOGIC
+               );
+               
+    end SnakeGame;
+    
+    architecture Behavioral of SnakeGame is
+        --general definitions--
+        constant ACTIVE: std_logic := '1';
+        constant LONG_ACTIVE: std_logic_vector (15 downto 0) := "0000000000000000";  
+        constant COUNT_4HZ: integer := (100/4)-1;
+        constant COUNT_1HZ: integer := (100/1)-1;
+        constant speed: integer := (100/8)-1;
+        constant bounce: std_logic := '0';
+        constant wrap: std_logic := '1';
+      --Seven Segment Driver constants--
+        constant COUNT_1KHZ: integer := (100000000/1000)-1;
+        constant SELECT_DIGIT_0: std_logic_vector(3 downto 0)   := "1110";
+        constant SELECT_DIGIT_1: std_logic_vector(3 downto 0)   := "1101";
+        constant SELECT_DIGIT_2: std_logic_vector(3 downto 0)   := "1011";
+        constant SELECT_DIGIT_3: std_logic_vector(3 downto 0)   := "0111";
+        constant SELECT_NO_DIGITS: std_logic_vector(3 downto 0) := "1111";
+        constant blank0: std_logic := '0';
+        constant blank1: std_logic  := '1';
+        constant blank2: std_logic  := '1';
+        constant blank3: std_logic := '0';
+        constant ZERO_7SEG: std_logic_vector(6 downto 0)  := "1000000";
+        constant ONE_7SEG: std_logic_vector(6 downto 0)   := "1111001";
+        constant TWO_7SEG: std_logic_vector(6 downto 0)   := "0100100";
+        constant THREE_7SEG: std_logic_vector(6 downto 0) := "0110000";
+        constant FOUR_7SEG: std_logic_vector(6 downto 0)  := "0011001";
+        constant FIVE_7SEG: std_logic_vector(6 downto 0)  := "0010010";
+        constant SIX_7SEG: std_logic_vector(6 downto 0)   := "0000010";
+        constant SEVEN_7SEG: std_logic_vector(6 downto 0) := "1111000";
+        constant EIGHT_7SEG: std_logic_vector(6 downto 0) := "0000000";
+        constant NINE_7SEG: std_logic_vector(6 downto 0)  := "0011000";
+        constant A_7SEG: std_logic_vector(6 downto 0)     := "0001000";
+        constant B_7SEG: std_logic_vector(6 downto 0)     := "0000011";
+        constant C_7SEG: std_logic_vector(6 downto 0)     := "1000110";
+        constant D_7SEG: std_logic_vector(6 downto 0)     := "0100001";
+        constant E_7SEG: std_logic_vector(6 downto 0)     := "0000110";
+        constant F_7SEG: std_logic_vector(6 downto 0)     := "0001110";
+        constant START_LED:  std_logic_vector(15 downto 0):="0000111111110000";  
+        constant ALL_LED:  std_logic_vector(15 downto 0):="1111111111111111";
+        constant NONE_LED:  std_logic_vector(15 downto 0):="0000000000000000";
+        -- other Signals--
+        signal synchOut: std_logic_vector (15 downto 0);
+        signal chopEn: std_logic;
+        signal position: integer;
+        signal errorEn: std_logic;
+        signal count: integer range 0 to COUNT_1HZ;
+        signal snakeMiss: std_logic;
+        signal headHit: std_logic;
+        signal tailHit: std_logic;
+        signal shiftLeftMode: std_logic;
+        signal shiftRightMode: std_logic;
+        signal wrapLeftMode: std_logic;
+        signal wrapRightMode: std_logic;
+        signal bounceLeftMode: std_logic;
+        signal bounceRightMode: std_logic;
+        signal pulseOutChop: std_logic;
+        signal pulseOutPosition: integer;
+        signal pulseOutError: std_logic;
+        signal subTailRightEn: std_logic;
+        signal subHeadRightEn: std_logic;
+        signal subTailLeftEn: std_logic;
+        signal subHeadLeftEn: std_logic;
+        signal addSnakeLeftEn: std_logic;
+        signal addSnakeRightEn: std_logic;
+        signal startMode: std_logic;   
+        signal winMode: std_logic;
+        signal loseMode: std_logic;
+        signal edgeMode: std_logic;
+        signal snakeEn: std_logic := '0';
+        signal countEn: std_logic;
+        signal unsafeOutput: std_logic_vector (15 downto 0);
+        
+        signal head: integer;
+        signal tail: integer;
+        signal timeOut: std_logic_vector (15 downto 0);
+        --state machine signals--
+        type States_t is (START, MOVE_RIGHT, RIGHT_EDGE, BOUNCE_RIGHT, WRAP_RIGHT, 
+        MOVE_LEFT, WRAP_LEFT, SUB_TAIL_LEFT, SUB_HEAD_LEFT, ADD_SNAKE_RIGHT, ADD_SNAKE_LEFT, SUB_HEAD_RIGHT,
+        SUB_TAIL_RIGHT,BOUNCE_LEFT,LEFT_EDGE, WIN_MODE, LOSE_MODE);
+        signal currentState: States_t;
+        signal nextState: States_t;
     begin
-        activeBits := 0;
-        position <= 0;
-        for i in 0 to 15 loop
-            if synchOut(i) = '1' then
-                activeBits := activeBits + 1;
-                position <= i;
-            end if;
-        end loop;
-        if activeBits = 1 and synchOut(position) = '1' then
-            chopEn <= '1';
-            position <= position;
-            errorEn <= '0';
-        elsif activeBits >= 2 then
-            chopEn <= '0';
-            position <= 0;  
-            errorEn <= '1';
-        else
-            chopEn <= '0';
+     --==================================================================================
+     --SYNCH
+     --==================================================================================
+      SYNC_CHAIN: process(reset, clock)    
+        variable unsafeOutput: std_logic_vector (15 downto 0); 
+    begin    
+        if (reset=ACTIVE) then        
+            synchOut   <= not LONG_ACTIVE;        
+            unsafeOutput := not LONG_ACTIVE;    
+        elsif (rising_edge(clock)) then        
+            synchOut   <= unsafeOutput;        
+            unsafeOutput := switches;    
+        end if; 	
+    end process;
+    --==================================================================================
+    --AXE TIME
+    --==================================================================================  
+      AXETIME: process(synchOut)
+        variable activeBits: integer;
+        begin
+            activeBits := 0;
             position <= 0;
-            errorEn <= '0';
-        end if;
-    end process;
---==================================================================================
---LEVEL DETECT CHOP
---==================================================================================  
-    process(reset, clock)
-        variable held: std_logic;
-    begin
-        if (reset=ACTIVE) then
-            pulseOutChop <= not ACTIVE;
-            held        := not ACTIVE;
-        elsif (rising_edge(clock)) then
-            pulseOutChop <= not ACTIVE;
-            if (chopEn=ACTIVE) then
-                if (held = not ACTIVE) then
-                    pulseOutChop <= ACTIVE;
-                    held        := ACTIVE;
+            for i in 0 to 15 loop
+                if synchOut(i) = '1' then
+                    activeBits := activeBits + 1;
+                    position <= i;
                 end if;
+            end loop;
+            if activeBits = 1 and synchOut(position) = '1' then
+                chopEn <= '1';
+                position <= position;
+                errorEn <= '0';
+            elsif activeBits >= 2 then
+                chopEn <= '0';
+                position <= 0;  
+                errorEn <= '1';
             else
-                held := not ACTIVE;
+                chopEn <= '0';
+                position <= 0;
+                errorEn <= '0';
             end if;
-        end if;
-    end process;
---==================================================================================
---LEVEL DETECT POSITION
---==================================================================================  
-    process(reset, clock)
-        variable held: std_logic;
-    begin
-        if (reset=ACTIVE) then
-            pulseOutPosition <= 16;
-            held        := not ACTIVE;
-        elsif (rising_edge(clock)) then
-            pulseOutPosition <= 16;
-            if (chopEn=ACTIVE) then
-                if (held = not ACTIVE) then
-                    pulseOutPosition <= Position;
-                    held        := ACTIVE;
+        end process;
+    --==================================================================================
+    --LEVEL DETECT CHOP
+    --==================================================================================  
+        process(reset, clock)
+            variable held: std_logic;
+        begin
+            if (reset=ACTIVE) then
+                pulseOutChop <= not ACTIVE;
+                held        := not ACTIVE;
+            elsif (rising_edge(clock)) then
+                pulseOutChop <= not ACTIVE;
+                if (chopEn=ACTIVE) then
+                    if (held = not ACTIVE) then
+                        pulseOutChop <= ACTIVE;
+                        held        := ACTIVE;
+                    end if;
+                else
+                    held := not ACTIVE;
                 end if;
-            else
-                held := not ACTIVE;
             end if;
-        end if;
-    end process;
---==================================================================================
---LEVEL DETECT ERROR
---==================================================================================  
-    process(reset, clock)
-        variable held: std_logic;
-    begin
-        if (reset=ACTIVE) then
-            pulseOutError <= not ACTIVE;
-            held        := not ACTIVE;
-        elsif (rising_edge(clock)) then
-            pulseOutError <= not ACTIVE;
-            if (ErrorEn=ACTIVE) then
-                if (held = not ACTIVE) then
-                    pulseOutError <= ACTIVE;
-                    held        := ACTIVE;
+        end process;
+    --==================================================================================
+    --LEVEL DETECT POSITION
+    --==================================================================================  
+        process(reset, clock)
+            variable held: std_logic;
+        begin
+            if (reset=ACTIVE) then
+                pulseOutPosition <= 16;
+                held        := not ACTIVE;
+            elsif (rising_edge(clock)) then
+                pulseOutPosition <= 16;
+                if (chopEn=ACTIVE) then
+                    if (held = not ACTIVE) then
+                        pulseOutPosition <= Position;
+                        held        := ACTIVE;
+                    end if;
+                else
+                    held := not ACTIVE;
                 end if;
-            else
-                held := not ACTIVE;
             end if;
-        end if;
-    end process;
---==================================================================================
---HIT OR MISS
---==================================================================================  
-HIT_OR_MISS: process(pulseOutError, pulseOutChop, pulseOutPosition)
-    begin
-        if(pulseOutError = ACTIVE) then
-            snakeMiss <= ACTIVE;
-        elsif(pulseOutChop = ACTIVE and head = position) then
-            headHit <= ACTIVE;
-        elsif(pulseOutChop = ACTIVE and tail = position) then
-            tailHit <= ACTIVE;
-        elsif(pulseOutChop = ACTIVE and tail /= position and head /= position) then
-            snakeMiss <= ACTIVE;
-        else 
-            snakeMiss <= not ACTIVE;
-            headHit <= not ACTIVE;
-            tailHit <= not ACTIVE;
-        end if;       
-    end process;
-       
---==================================================================================
---FOUR HZ
---==================================================================================     
-FOUR_HZ: process(reset, clock)
-begin
-    
-    if (reset = ACTIVE) then
-        count <= 0;
-    elsif (rising_edge(clock)) then
-        if (count = speed) then
-            count <= 0;  
-        else
-            count <= count + 1;
-        end if;
-    end if;
-    -- update-enable-signal------------------------------------------------    
-    snakeEn <= not ACTIVE;
-    if (count = speed) then
-        snakeEn <= ACTIVE;
-    end if;
-end process ;
---==================================================================================
---ONE HZ
---==================================================================================     
-One_HZ: process(reset, clock)
-    variable countsec: integer range 0 to COUNT_1HZ; 
-begin
-    if (reset = ACTIVE) then
-        countsec := 0;
-     elsif (rising_edge(clock)) then
-        if(countsec = COUNT_1HZ) then
-            countsec := 0;
-        else
-            countsec := countsec + 1;
-        end if;
-     end if;
-     
-     countEn <= not ACTIVE;
-
-     if(countsec = COUNT_1HZ) then
-        countEn <= ACTIVE;
-     end if;
-end process;
---==================================================================================
---EDGE SWAP
---==================================================================================    
- process(clock, reset)
-    begin
-        if reset = '1' then
-            edgeMode <= bounce; -- Reset condition
-        elsif rising_edge(clock) then
+        end process;
+    --==================================================================================
+    --LEVEL DETECT ERROR
+    --==================================================================================  
+        process(reset, clock)
+            variable held: std_logic;
+        begin
+            if (reset=ACTIVE) then
+                pulseOutError <= not ACTIVE;
+                held        := not ACTIVE;
+            elsif (rising_edge(clock)) then
+                pulseOutError <= not ACTIVE;
+                if (ErrorEn=ACTIVE) then
+                    if (held = not ACTIVE) then
+                        pulseOutError <= ACTIVE;
+                        held        := ACTIVE;
+                    end if;
+                else
+                    held := not ACTIVE;
+                end if;
+            end if;
+        end process;
+    --==================================================================================
+    --HIT OR MISS
+    --==================================================================================  
+    HIT_OR_MISS: process(pulseOutError, pulseOutChop, pulseOutPosition)
+        begin
+            if(pulseOutError = ACTIVE) then
+                snakeMiss <= ACTIVE;
+            elsif(pulseOutChop = ACTIVE and head = position) then
+                headHit <= ACTIVE;
+            elsif(pulseOutChop = ACTIVE and tail = position) then
+                tailHit <= ACTIVE;
+            elsif(pulseOutChop = ACTIVE and tail /= position and head /= position) then
+                snakeMiss <= ACTIVE;
+            else 
+                snakeMiss <= not ACTIVE;
+                headHit <= not ACTIVE;
+                tailHit <= not ACTIVE;
+            end if;       
+        end process;
            
-            if bounceRightMode = '1' or bounceLeftMode = '1' then
-                edgeMode <= wrap; -- Toggle when bounce mode is active
-            elsif wrapRightMode = '1' and tail = 15 then
-                edgeMode <= bounce; -- Switch to 0 when wrapRightMode is active and tail is 15
-            elsif wrapLeftMode = '1' and tail = 0 then
-                edgeMode <= bounce; -- Switch to 0 when wrapLeftMode is active and tail is 0
+    --==================================================================================
+    --FOUR HZ
+    --==================================================================================     
+    FOUR_HZ: process(reset, clock)
+    begin
+        
+        if (reset = ACTIVE) then
+            count <= 0;
+        elsif (rising_edge(clock)) then
+            if (count = speed) then
+                count <= 0;  
             else
-                edgeMode <= edgeMode; -- Default toggle
+                count <= count + 1;
             end if;
         end if;
-    end process;
-
-    
---==================================================================================
---SNAKE REG
---==================================================================================  
-SNAKE_REG: process(reset, clock, snakeEn)
+        -- update-enable-signal------------------------------------------------    
+        snakeEn <= not ACTIVE;
+        if (count = speed) then
+            snakeEn <= ACTIVE;
+        end if;
+    end process ;
+    --==================================================================================
+    --ONE HZ
+    --==================================================================================     
+    One_HZ: process(reset, clock)
+        variable countsec: integer range 0 to COUNT_1HZ; 
     begin
-        if reset =ACTIVE then
-            currentState <= START;
+        if (reset = ACTIVE) then
+            countsec := 0;
+         elsif (rising_edge(clock)) then
+            if(countsec = COUNT_1HZ) then
+                countsec := 0;
+            else
+                countsec := countsec + 1;
+            end if;
+         end if;
+         
+         countEn <= not ACTIVE;
+    
+         if(countsec = COUNT_1HZ) then
+            countEn <= ACTIVE;
+         end if;
+    end process;
+    --==================================================================================
+    --EDGE SWAP
+    --==================================================================================    
+     process(clock, reset)
+        begin
+            if reset = '1' then
+                edgeMode <= bounce; -- Reset condition
+            elsif rising_edge(clock) then
+               
+                if bounceRightMode = '1' or bounceLeftMode = '1' then
+                    edgeMode <= wrap; -- Toggle when bounce mode is active
+                elsif wrapRightMode = '1' and tail = 15 then
+                    edgeMode <= bounce; -- Switch to 0 when wrapRightMode is active and tail is 15
+                elsif wrapLeftMode = '1' and tail = 0 then
+                    edgeMode <= bounce; -- Switch to 0 when wrapLeftMode is active and tail is 0
+                else
+                    edgeMode <= edgeMode; -- Default toggle
+                end if;
+            end if;
+        end process;
+    
+        
+    --==================================================================================
+    --SNAKE REG
+    --==================================================================================  
+    SNAKE_REG: process(reset, clock, snakeEn)
+        begin
+            if reset =ACTIVE then
+                currentState <= START;
+            elsif rising_edge(clock) then
+                currentState <= nextState;
+            end if;
+        end process;
+    --==================================================================================
+    --SNAKE TRANSITION
+    --================================================================================== 
+     STATE_TRANSITION: process(currentState,snakeMiss, headHit, tailHit, head, tail, snakeEn)
+        begin
+        addSnakeLeftEn <= not ACTIVE;
+        addSnakeRightEn <= not ACTIVE;
+        shiftLeftMode <= not ACTIVE;
+        shiftRightMode <= not ACTIVE;
+        wrapLeftMode <= not ACTIVE;
+        wrapRightMode <= not ACTIVE;
+        bounceLeftMode <= not ACTIVE;
+        bounceRightMode <= not ACTIVE;
+        subTailRightEn <= not ACTIVE;
+        subHeadRightEn <= not ACTIVE;
+        subTailLeftEn <= not ACTIVE;
+        subHeadLeftEn <= not ACTIVE;
+        startMode <= not ACTIVE;
+        winMode <= not ACTIVE;
+        loseMode <= not ACTIVE;
+        nextState<= currentState;
+        
+        case CurrentState is 
+            --------------------------------------------------------START
+            when START =>
+                
+                    startMode <= ACTIVE;
+                    nextState <= MOVE_RIGHT;
+                
+                
+            --------------------------------------------------------MOVE_RIGHT
+            when MOVE_RIGHT =>
+                shiftRightMode <= ACTIVE;
+               if(tail = head and (tailHit <= ACTIVE or headHit <= ACTIVE)) then
+                    nextState <= WIN_MODE;
+                elsif(headHit = ACTIVE) then
+                    nextState <= SUB_HEAD_RIGHT;
+                elsif(tailHit = ACTIVE) then
+                    nextState <= SUB_TAIL_RIGHT;
+                elsif(snakeMiss <= ACTIVE and snakeEn=ACTIVE) then
+                    nextState <= ADD_SNAKE_RIGHT;
+                elsif(head = 0) then
+                    nextState <= RIGHT_EDGE;
+                else 
+                    nextState <= MOVE_RIGHT;
+                end if;
+              --------------------------------------------------------ADD_SNAKE_RIGHT
+              when ADD_SNAKE_RIGHT =>
+                addSnakeRightEn <= ACTIVE;
+                if((tail= 0 and head = 15) or (tail= 15 and head = 0)) then
+                    nextState <= LOSE_MODE;
+                else
+                nextState <= MOVE_RIGHT;
+                end if;
+                 --------------------------------------------------------ADD_SNAKE_LEFT
+              when ADD_SNAKE_LEFT =>
+                addSnakeLeftEn <= ACTIVE;
+                if((tail= 0 and head = 15) or (tail= 15 and head = 0)) then
+                    nextState <= LOSE_MODE;
+                else
+                nextState <= MOVE_LEFT;
+                end if;
+              --------------------------------------------------------SUB_HEAD_RIGHT
+              when SUB_HEAD_RIGHT =>
+                subHeadRightEn <= ACTIVE;
+                nextState <= MOVE_RIGHT;
+              --------------------------------------------------------SUB_TAIL_RIGHT
+              when SUB_TAIL_RIGHT =>
+                subTailRightEn <= ACTIVE;
+                nextState <= MOVE_RIGHT;
+              --------------------------------------------------------RIGHT_EDGE
+              when RIGHT_EDGE =>
+                shiftRightMode <= not ACTIVE;
+                if(edgeMode = wrap) then
+                    nextState <= WRAP_RIGHT;
+                elsif(edgeMode = bounce) then
+                    nextState <= BOUNCE_RIGHT;
+                end if;
+              --------------------------------------------------------WRAP_RIGHT
+              when WRAP_RIGHT =>
+                wrapRightMode <= ACTIVE;
+                if(tail = 15) then
+                    nextState <= MOVE_RIGHT;
+                else
+                    nextState <= WRAP_RIGHT;
+                end if;
+               --------------------------------------------------------BOUNCE_RIGHT
+               when BOUNCE_RIGHT =>
+                bounceRightMode <= ACTIVE;
+                nextState <= MOVE_LEFT;
+               ---------------------------------------------------------MOVE_LEFT
+               when MOVE_LEFT =>
+                shiftLeftMode <= ACTIVE;
+                if(tail = head and (tailHit <= ACTIVE or headHit <= ACTIVE)) then
+                    nextState <= WIN_MODE;
+                elsif(headHit = ACTIVE) then
+                    nextState <= SUB_HEAD_LEFT;
+                elsif(tailHit = ACTIVE) then
+                    nextState <= SUB_TAIL_LEFT;
+                elsif(snakeMiss <= ACTIVE and snakeEn=ACTIVE) then
+                    nextState <= ADD_SNAKE_LEFT;
+                elsif(head = 15) then
+                    nextState <= LEFT_EDGE;
+                else 
+                    nextState <= MOVE_LEFT;
+                end if;  
+              --------------------------------------------------------SUB_HEAD_LEFT
+              when SUB_HEAD_LEFT =>
+                subHeadLeftEn <= ACTIVE;
+                nextState <= MOVE_Left;
+              --------------------------------------------------------SUB_TAIL_LEFT
+              when SUB_TAIL_LEFT =>
+                subTailLeftEn <= ACTIVE;
+                nextState <= MOVE_Left;   
+               --------------------------------------------------------LEFT_EDGE
+              when LEFT_EDGE =>
+                shiftLeftMode <= not ACTIVE;
+                if(edgeMode = wrap) then
+                    nextState <= WRAP_LEFT;
+                elsif(edgeMode = bounce) then
+                    nextState <= BOUNCE_LEFT;
+                end if;  
+                --------------------------------------------------------WRAP_LEFT
+              when WRAP_LEFT =>
+                wrapLeftMode <= ACTIVE;
+                if(tail = 0) then
+                    nextState <= MOVE_LEFT;
+                else
+                    nextState <= WRAP_LEFT;
+                end if;
+                --------------------------------------------------------BOUNCE_LEFT
+               when BOUNCE_LEFT =>
+                bounceLeftMode <= ACTIVE;
+                nextState <= MOVE_RIGHT;  
+               --------------------------------------------------------WIN_MODE
+               when WIN_MODE =>
+                winMode <= ACTIVE;
+                nextState <= WIN_MODE; 
+                --------------------------------------------------------LOSE_MODE
+                when LOSE_MODE =>
+                loseMode <= ACTIVE;
+                nextState <= LOSE_MODE; 
+            end case;
+        end process;
+    --==================================================================================
+    --SNAKE POSITION
+    --==================================================================================    
+    SNAKE_POSITION: process(reset, clock, shiftLeftMode, shiftRightMode, wrapRightMode, wrapLeftMode,
+                            bounceLeftMode, bounceRightMode, subTailRightEn, subHeadRightEn, subTailLeftEn,
+                            subHeadLeftEn, addSnakeLeftEn,addSnakeRightEn, startMode, winMode, loseMode)
+        variable tempLEDs: std_logic_vector(15 downto 0) := (others => '0');
+        variable temp_head: integer := 4;
+        variable temp_tail: integer := 11;
+        variable temp_swap: integer;
+    begin
+        if reset = ACTIVE then
+            temp_head := 4; 
+            temp_tail := 11; 
+            tempLEDs := START_LED;
+            -- rest of the process
         elsif rising_edge(clock) then
-            currentState <= nextState;
-        end if;
-    end process;
---==================================================================================
---SNAKE TRANSITION
---================================================================================== 
- STATE_TRANSITION: process(currentState,snakeMiss, headHit, tailHit, head, tail, snakeEn)
-    begin
-    addSnakeEn <= not ACTIVE;
-    shiftLeftMode <= not ACTIVE;
-    shiftRightMode <= not ACTIVE;
-    wrapLeftMode <= not ACTIVE;
-    wrapRightMode <= not ACTIVE;
-    bounceLeftMode <= not ACTIVE;
-    bounceRightMode <= not ACTIVE;
-    subTailRightEn <= not ACTIVE;
-    subHeadRightEn <= not ACTIVE;
-    subTailLeftEn <= not ACTIVE;
-    subHeadLeftEn <= not ACTIVE;
-    startMode <= not ACTIVE;
-    winMode <= not ACTIVE;
-    loseMode <= not ACTIVE;
-    nextState<= currentState;
-    
-    case CurrentState is 
-        --------------------------------------------------------START
-        when START =>
-            if(snakeEn = ACTIVE) then
-                startMode <= ACTIVE;
-                nextState <= MOVE_RIGHT;
-            else
-                nextState <= START;
-            end if;
-        --------------------------------------------------------MOVE_RIGHT
-        when MOVE_RIGHT =>
-            shiftRightMode <= ACTIVE;
-           if(tail = head and (tailHit <= ACTIVE or headHit <= ACTIVE)) then
-                nextState <= WIN_MODE;
-            elsif(headHit = ACTIVE) then
-                nextState <= SUB_HEAD_RIGHT;
-            elsif(tailHit = ACTIVE) then
-                nextState <= SUB_TAIL_RIGHT;
-            elsif(snakeMiss <= ACTIVE and snakeEn=ACTIVE) then
-                nextState <= ADD_SNAKE_RIGHT;
-            elsif(head = 0) then
-                nextState <= RIGHT_EDGE;
-            else 
-                nextState <= MOVE_RIGHT;
-            end if;
-          --------------------------------------------------------ADD_SNAKE_RIGHT
-          when ADD_SNAKE_RIGHT =>
-            addSnakeEn <= ACTIVE;
-            if((tail= 0 and head = 15) or (tail= 15 and head = 0)) then
-                nextState <= LOSE_MODE;
-            else
-            nextState <= MOVE_RIGHT;
-            end if;
-             --------------------------------------------------------ADD_SNAKE_LEFT
-          when ADD_SNAKE_LEFT =>
-            addSnakeEn <= ACTIVE;
-            if((tail= 0 and head = 15) or (tail= 15 and head = 0)) then
-                nextState <= LOSE_MODE;
-            else
-            nextState <= MOVE_RIGHT;
-            end if;
-          --------------------------------------------------------SUB_HEAD_RIGHT
-          when SUB_HEAD_RIGHT =>
-            subHeadRightEn <= ACTIVE;
-            nextState <= MOVE_RIGHT;
-          --------------------------------------------------------SUB_TAIL_RIGHT
-          when SUB_TAIL_RIGHT =>
-            subTailRightEn <= ACTIVE;
-            nextState <= MOVE_RIGHT;
-          --------------------------------------------------------RIGHT_EDGE
-          when RIGHT_EDGE =>
-            shiftRightMode <= not ACTIVE;
-            if(edgeMode = wrap and snakeEn = ACTIVE) then
-                nextState <= WRAP_RIGHT;
-            elsif(edgeMode = bounce and snakeEn = ACTIVE) then
-                nextState <= BOUNCE_RIGHT;
-            end if;
-          --------------------------------------------------------WRAP_RIGHT
-          when WRAP_RIGHT =>
-            wrapRightMode <= ACTIVE;
-            if(tail = 15 and snakeEn = ACTIVE) then
-                nextState <= MOVE_RIGHT;
-            else
-                nextState <= WRAP_RIGHT;
-            end if;
-           --------------------------------------------------------BOUNCE_RIGHT
-           when BOUNCE_RIGHT =>
-            bounceRightMode <= ACTIVE;
-            nextState <= MOVE_LEFT;
-           ---------------------------------------------------------MOVE_LEFT
-           when MOVE_LEFT =>
-            shiftLeftMode <= ACTIVE;
-            if(tail = head and (tailHit <= ACTIVE or headHit <= ACTIVE)) then
-                nextState <= WIN_MODE;
-            elsif(headHit = ACTIVE) then
-                nextState <= SUB_HEAD_LEFT;
-            elsif(tailHit = ACTIVE) then
-                nextState <= SUB_TAIL_LEFT;
-            elsif(snakeMiss <= ACTIVE and snakeEn=ACTIVE) then
-                nextState <= ADD_SNAKE_LEFT;
-            elsif(head = 0) then
-                nextState <= LEFT_EDGE;
-            else 
-                nextState <= MOVE_LEFT;
-            end if;  
-          --------------------------------------------------------SUB_HEAD_LEFT
-          when SUB_HEAD_LEFT =>
-            subHeadLeftEn <= ACTIVE;
-            nextState <= MOVE_Left;
-          --------------------------------------------------------SUB_TAIL_LEFT
-          when SUB_TAIL_LEFT =>
-            subTailLeftEn <= ACTIVE;
-            nextState <= MOVE_Left;   
-           --------------------------------------------------------LEFT_EDGE
-          when LEFT_EDGE =>
-            shiftLeftMode <= not ACTIVE;
-            if(edgeMode = wrap and snakeEn = ACTIVE) then
-                nextState <= WRAP_LEFT;
-            elsif(edgeMode = bounce and snakeEn = ACTIVE) then
-                nextState <= BOUNCE_LEFT;
-            end if;  
-            --------------------------------------------------------WRAP_LEFT
-          when WRAP_LEFT =>
-            wrapLeftMode <= ACTIVE;
-            if(tail = 15 and snakeEn = ACTIVE) then
-                nextState <= MOVE_LEFT;
-            else
-                nextState <= WRAP_LEFT;
-            end if;
-            --------------------------------------------------------BOUNCE_LEFT
-           when BOUNCE_LEFT =>
-            bounceLeftMode <= ACTIVE;
-            nextState <= MOVE_RIGHT;  
-           --------------------------------------------------------WIN_MODE
-           when WIN_MODE =>
-            winMode <= ACTIVE;
-            nextState <= WIN_MODE; 
-            --------------------------------------------------------LOSE_MODE
-            when LOSE_MODE =>
-            loseMode <= ACTIVE;
-            nextState <= LOSE_MODE; 
-        end case;
-    end process;
---==================================================================================
---SNAKE POSITION
---==================================================================================    
-SNAKE_POSITION: process(reset, clock, shiftLeftMode, shiftRightMode, wrapRightMode, wrapLeftMode,
-                        bounceLeftMode, bounceRightMode, subTailRightEn, subHeadRightEn, subTailLeftEn,
-                        subHeadLeftEn, addSnakeEn, startMode, winMode, loseMode)
-    variable tempLEDs: std_logic_vector(15 downto 0) := (others => '0');
-    variable temp_head: integer := 4;
-    variable temp_tail: integer := 11;
-    variable temp_swap: integer;
-begin
-    if reset = ACTIVE then
-        temp_head := 4; 
-        temp_tail := 11; 
-        tempLEDs := START_LED;
-        -- rest of the process
-    elsif rising_edge(clock) then
-        if shiftRightMode = ACTIVE then
-            tempLEDs  := '0' & tempLEDs(15 downto 1);
-            temp_head := temp_head - 1;
-            temp_tail := temp_tail -1;
-        elsif shiftLeftMode = ACTIVE then
-            tempLEDs  := tempLEDs(14 downto 0) & '0';
-            temp_head := temp_head + 1;
-            temp_tail := temp_tail +1;
-        elsif ((bounceLeftMode = ACTIVE) or (bounceRightMode = ACTIVE)) then
-            
-            temp_swap := temp_head;
-            temp_head := temp_tail;
-            temp_tail := temp_swap;
-        elsif wrapRightMode = ACTIVE then
-            tempLEDs := tempLEDs(0) & tempLEDs(15 downto 1);
-        elsif wrapLeftMode = ACTIVE then
-            tempLEDs := tempLEDs(14 downto 0) & tempLEDs(15);
-        elsif addSnakeEn = ACTIVE then 
-            if (temp_tail - temp_head) >= 0 then
-                tempLEDs(temp_tail + 1) := ACTIVE;  
-                temp_tail := temp_tail + 1; 
-            elsif (temp_tail - temp_head) < 0 then
-                tempLEDs(temp_tail - 1) := ACTIVE;
+            if shiftRightMode = ACTIVE then
+                tempLEDs  := '0' & tempLEDs(15 downto 1);
+                temp_head := temp_head - 1;
+                temp_tail := temp_tail -1;
+            elsif shiftLeftMode = ACTIVE then
+                tempLEDs  := tempLEDs(14 downto 0) & '0';
+                temp_head := temp_head + 1;
+                temp_tail := temp_tail +1;
+            elsif ((bounceLeftMode = ACTIVE) or (bounceRightMode = ACTIVE)) then
+                
+                temp_swap := temp_head;
+                temp_head := temp_tail;
+                temp_tail := temp_swap;
+            elsif wrapRightMode = ACTIVE then
+                tempLEDs := tempLEDs(0) & tempLEDs(15 downto 1);
+                temp_head := temp_head - 1;
+                if temp_head < 0 then
+                    temp_head := 15;
+                end if;
                 temp_tail := temp_tail - 1;
-            end if;
-        elsif subTailRightEn = ACTIVE then
-            tempLEDs(temp_tail) := not ACTIVE;
-            temp_tail := temp_tail - 1;
-        elsif subHeadRightEn = ACTIVE then 
-            tempLEDs(temp_head) := not ACTIVE;
-            temp_head := temp_head + 1;
-        elsif subTailLeftEn = ACTIVE then
-            tempLEDs(temp_tail) := not ACTIVE;
-            temp_tail := temp_tail + 1;
-        elsif subHeadLeftEn = ACTIVE then
-            tempLEDs(temp_head) := not ACTIVE;
-            temp_head := temp_head - 1;
-        elsif winMode = ACTIVE then
-            if snakeEn = ACTIVE then
+                if temp_tail < 0 then
+                    temp_tail := 15;
+                end if;
+            elsif wrapLeftMode = ACTIVE then
+                tempLEDs := tempLEDs(14 downto 0) & tempLEDs(15);
+                temp_head := temp_head + 1;
+                if temp_head > 15 then
+                    temp_head := 0;
+                end if;
+                temp_tail := temp_tail + 1;
+                if temp_tail > 15 then
+                    temp_tail := 0;
+                end if;
+            elsif addSnakeLeftEn = ACTIVE then 
+                if (temp_tail /= 0) then
+                    tempLEDs(temp_tail - 1) := ACTIVE;  
+                    temp_tail := temp_tail - 1; 
+                elsif (temp_tail = 0) then
+                    tempLEDs(temp_head + 1) := ACTIVE;
+                    temp_head := temp_head +1;
+                end if;
+            elsif addSnakeRightEn = ACTIVE then
+                    if(temp_tail /=15) then
+                        tempLEDs(temp_tail + 1) := ACTIVE;
+                        temp_tail := temp_tail + 1;
+                    elsif (temp_tail = 15) then
+                        tempLEDs(temp_head+1) := ACTIVE;
+                        temp_head := temp_head + 1;
+                end if;
+            elsif subTailRightEn = ACTIVE then
+                tempLEDs(temp_tail) := not ACTIVE;
+                temp_tail := temp_tail - 1;
+            elsif subHeadRightEn = ACTIVE then 
+                tempLEDs(temp_head) := not ACTIVE;
+                temp_head := temp_head + 1;
+            elsif subTailLeftEn = ACTIVE then
+                tempLEDs(temp_tail) := not ACTIVE;
+                temp_tail := temp_tail + 1;
+            elsif subHeadLeftEn = ACTIVE then
+                tempLEDs(temp_head) := not ACTIVE;
+                temp_head := temp_head - 1;
+            elsif winMode = ACTIVE then
+                if snakeEn = ACTIVE then
+                    tempLEDs := ALL_LED;
+                else
+                    tempLEDs := NONE_LED;
+                end if;
+            elsif loseMode = ACTIVE then
                 tempLEDs := ALL_LED;
-            else
-                tempLEDs := NONE_LED;
             end if;
-        elsif loseMode = ACTIVE then
-            tempLEDs := ALL_LED;
-        end if;
-
-        -- Limit head and tail within the valid range
-        if temp_head > 15 then
-            temp_head := 15;
-        elsif temp_head < 0 then
-            temp_head := 0;
-        end if;
-
-        if temp_tail > 15 then
-            temp_tail := 15;
-        elsif temp_tail < 0 then
-            temp_tail := 0;
-        end if;
-    end if;
     
-    head <= temp_head;
-    tail <= temp_tail;
-    leds <= tempLEDs;
-end process;
-
-
-
-end Behavioral;
+            -- Limit head and tail within the valid range
+            if temp_head > 15 then
+                temp_head := 15;
+            elsif temp_head < 0 then
+                temp_head := 0;
+            end if;
+    
+            if temp_tail > 15 then
+                temp_tail := 15;
+            elsif temp_tail < 0 then
+                temp_tail := 0;
+            end if;
+        end if;
+        
+        head <= temp_head;
+        tail <= temp_tail;
+        leds <= tempLEDs;
+    end process;
+    
+    
+    
+    end Behavioral;
