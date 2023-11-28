@@ -80,6 +80,9 @@ architecture Behavioral of SnakeGame is
     constant D_7SEG: std_logic_vector(6 downto 0)     := "0100001";
     constant E_7SEG: std_logic_vector(6 downto 0)     := "0000110";
     constant F_7SEG: std_logic_vector(6 downto 0)     := "0001110";
+    constant START_LED:  std_logic_vector(15 downto 0):="0000111111110000";  
+    constant ALL_LED:  std_logic_vector(15 downto 0):="1111111111111111";
+    constant NONE_LED:  std_logic_vector(15 downto 0):="0000000000000000";
     -- other Signals--
     signal synchOut: std_logic_vector (15 downto 0);
     signal chopEn: std_logic;
@@ -460,7 +463,66 @@ SNAKE_REG: process(reset, clock, snakeEn)
 --==================================================================================    
 SNAKE_POSITION: process(shiftLeftMode, shiftRightMode, wrapRightMode, wrapLeftMode,
 bounceLeftMode, bounceRightMode, subTailRightEn, subHeadRightEn, subTailLeftEn,
-subHeadLeftEn, addSnakeEn, startMode, winMode, loseMode);
-    
-end process;
+subHeadLeftEn, addSnakeEn, startMode, winMode, loseMode,reset)
+    variable tempLEDs: std_logic_vector(15 downto 0) := (others => '0');
+begin
+    if reset = ACTIVE then
+        tempLEDs := START_LED;
+        head <= 4;
+        tail <= 11;
+    elsif(rising_edge(clock)) then
+        if(shiftRightMode = ACTIVE) then
+            tempLEDs := '0' & tempLEDs(15 downto 1);
+        elsif (shiftLeftMode = ACTIVE) then
+            
+            tempLEDs := tempLEDs(14 downto 0) & '0';
+        elsif (bounceLeftMode = ACTIVE or bounceRightMode = ACTIVE) then
+            head<=tail;
+            tail<=head;
+        elsif (wrapRightMode = ACTIVE) then
+            tempLEDs := tempLEDs(0)& tempLEDs(15 downto 1);
+        elsif (wrapLeftMode = ACTIVE) then
+            tempLEDs := tempLEDs(14 downto 0) & tempLEDs(15);
+        elsif (addSnakeEn = ACTIVE) then 
+            if(head = 0) then
+                tempLEDs(tail+1) := ACTIVE;
+                tail <= tail+1;
+            elsif( head = 15) then
+                tempLEDs(tail-1) := ACTIVE;
+                tail <= tail -1;
+            else
+                if (tail - head) >= 0 then
+                tempLEDs(tail + 1) := ACTIVE;  
+                 tail <= tail + 1; 
+                elsif ( tail - head) < 0 then
+                    tempLEDs(tail-1) := ACTIVE;
+                    tail <= tail - 1;
+                end if;
+             end if;
+         elsif(subTailRightEn = ACTIVE) then
+            tempLEDs(tail) := not ACTIVE;
+            tail <= tail -1;
+         elsif(subHeadRightEn = ACTIVE) then 
+            tempLEDs(head) := not ACTIVE;
+            head <= head+1;
+         elsif(subTailLeftEn = ACTIVE) then
+            tempLEDs(tail) := not ACTIVE;
+            tail <= tail+1;
+         elsif(subHeadLeftEn = ACTIVE) then
+            tempLEDs(head) := not ACTIVE;
+            head <= head-1;
+         elsif winMode = ACTIVE then
+            tempLEDs := NONE_LED;
+            if (snakeEn =  ACTIVE) then
+                tempLEDs := not NONE_LED;
+         elsif loseMode = ACTIVE then
+            tempLEDS := NONE_LED;           
+         end if;
+       end if;  
+    end if;
+        head <= head;
+        tail <= tail;
+        leds <= tempLEDs;
+ end process;
+
 end Behavioral;
