@@ -71,7 +71,7 @@ begin
     reset <= '1';
     wait for CLOCKPERIOD;
     reset <= not ACTIVE;
-    wait for 10ns;
+    wait until leds(1) = ACTIVE;
     switches(15 downto 2) <= (others => '0');
     switches(0) <= not ACTIVE;
     switches(1) <= ACTIVE;
@@ -81,7 +81,7 @@ begin
   
     switches(1)<= not ACTIVE;
     wait for 10ns;
-    switches(1) <= ACTIVE;
+    
     switches(2) <= ACTIVE;
     wait for 10ns;
     switches(1) <= not ACTIVE;
