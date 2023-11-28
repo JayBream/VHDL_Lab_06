@@ -581,5 +581,24 @@ end process;
         end if;
    end if;
 end process;    
-    
+--==================================================================================
+--SECONDS_TO_7SEG
+--================================================================================== 
+ SECONDS_TO_7SEG: process(seconds)
+ begin
+	if seconds <= 59
+    	secondsBinary <= to_unsigned(seconds, 8);	
+	else
+    	secondsBinary <= "00000000"  
+ end process;    
+--==================================================================================
+--MINUTES_TO_7SEG
+--==================================================================================         
+ MINUTES_TO_7SEG: process(minutes)
+ begin
+ 	if minutes <= 59
+    	minutesBinary <= to_unsigned(seconds, 8);	
+	else
+    	minutesBinary <= "00000000"                
+ end process;
     end Behavioral;
