@@ -50,6 +50,9 @@ architecture Behavioral of SnakeGame is
     constant ACTIVE: std_logic := '1';
     constant LONG_ACTIVE: std_logic_vector (15 downto 0) := "0000000000000000";  
     constant COUNT_4HZ: integer := (100000000/4)-1;
+    constant COUNT_1HZ: integer := (100000000/1)-1;
+    constant bounce: std_logic := '0';
+    constant wrap: std_logic := '1';
   --Seven Segment Driver constants--
     constant COUNT_1KHZ: integer := (100000000/1000)-1;
     constant SELECT_DIGIT_0: std_logic_vector(3 downto 0)   := "1110";
@@ -98,6 +101,7 @@ architecture Behavioral of SnakeGame is
     signal subHeadRightEn: std_logic;
     signal subTailLeftEn: std_logic;
     signal subHeadLeftEn: std_logic;
+    signal addSnakeEn: std_logic;
     signal startMode: std_logic;   
     signal winMode: std_logic;
     signal loseMode: std_logic;
@@ -111,8 +115,8 @@ architecture Behavioral of SnakeGame is
     signal timeOut: std_logic_vector (15 downto 0);
     --state machine signals--
     type States_t is (START, MOVE_RIGHT, RIGHT_EDGE, BOUNCE_RIGHT, WRAP_RIGHT, 
-    MOVE_LEFT, WRAP_LEFT, SUB_TAIL_LEFT, SUB_HEAD_LEFT, ADD_SNAKE, SUB_HEAD_RIGHT,
-    SUB_TAIL_RIGHT,BOUNCE_LEFT,LEFT_EDGE);
+    MOVE_LEFT, WRAP_LEFT, SUB_TAIL_LEFT, SUB_HEAD_LEFT, ADD_SNAKE_RIGHT, ADD_SNAKE_LEFT, SUB_HEAD_RIGHT,
+    SUB_TAIL_RIGHT,BOUNCE_LEFT,LEFT_EDGE, WIN_MODE, LOSE_MODE);
     signal currentState: States_t;
     signal nextState: States_t;
 begin
@@ -261,6 +265,202 @@ begin
      end if;
 end process;
 --==================================================================================
+--ONE HZ
+--==================================================================================     
+One_HZ: process(reset, clock)
+    variable countsec: integer range 0 to COUNT_1HZ; 
+begin
+    if (reset = ACTIVE) then
+        countsec := 0;
+     elsif (rising_edge(clock)) then
+        if(countsec = COUNT_1HZ) then
+            countsec := 0;
+        else
+            countsec := countsec + 1;
+        end if;
+     end if;
+     
+     countEn <= not ACTIVE;
+
+     if(countsec = COUNT_1HZ) then
+        countEn <= ACTIVE;
+     end if;
+end process;
+--==================================================================================
 --EDGE SWAP
 --==================================================================================    
+ process(clock, reset)
+    begin
+        if reset = '1' then
+            edgeMode <= bounce; -- Reset condition
+        elsif rising_edge(clock) then
+           
+            if bounceRightMode = '1' or bounceLeftMode = '1' then
+                edgeMode <= wrap; -- Toggle when bounce mode is active
+            elsif wrapRightMode = '1' and tail = 15 then
+                edgeMode <= bounce; -- Switch to 0 when wrapRightMode is active and tail is 15
+            elsif wrapLeftMode = '1' and tail = 0 then
+                edgeMode <= bounce; -- Switch to 0 when wrapLeftMode is active and tail is 0
+            else
+                edgeMode <= edgeMode; -- Default toggle
+            end if;
+        end if;
+    end process;
+
+    edgeMode <= edgeMode;
+--==================================================================================
+--SNAKE REG
+--==================================================================================  
+SNAKE_REG: process(reset, clock, snakeEn)
+    begin
+        if reset =ACTIVE then
+            currentState <= START;
+        elsif rising_edge(clock) then
+            currentState <= nextState;
+        end if;
+    end process;
+--==================================================================================
+--SNAKE TRANSITION
+--================================================================================== 
+ STATE_TRANSITION: process(currentState,snakeMiss, headHit, tailHit, head, tail, snakeEn)
+    begin
+    addSnakeEn <= not ACTIVE;
+    shiftLeftMode <= not ACTIVE;
+    shiftRightMode <= not ACTIVE;
+    wrapLeftMode <= not ACTIVE;
+    wrapRightMode <= not ACTIVE;
+    bounceLeftMode <= not ACTIVE;
+    bounceRightMode <= not ACTIVE;
+    subTailRightEn <= not ACTIVE;
+    subHeadRightEn <= not ACTIVE;
+    subTailLeftEn <= not ACTIVE;
+    subHeadLeftEn <= not ACTIVE;
+    startMode <= not ACTIVE;
+    winMode <= not ACTIVE;
+    loseMode <= not ACTIVE;
+    nextState<= currentState;
+    
+    case CurrentState is 
+        --------------------------------------------------------START
+        when START =>
+            startMode <= ACTIVE;
+            nextState <= MOVE_RIGHT;
+        --------------------------------------------------------MOVE_RIGHT
+        when MOVE_RIGHT =>
+            shiftRightMode <= ACTIVE;
+           if(tail = head and (tailHit <= ACTIVE or headHit <= ACTIVE)) then
+                nextState <= WIN_MODE;
+            elsif(headHit = ACTIVE) then
+                nextState <= SUB_HEAD_RIGHT;
+            elsif(tailHit = ACTIVE) then
+                nextState <= SUB_TAIL_RIGHT;
+            elsif(snakeMiss <= ACTIVE and snakeEn=ACTIVE) then
+                nextState <= ADD_SNAKE_RIGHT;
+            elsif(head = 0 and snakeEn = ACTIVE) then
+                nextState <= RIGHT_EDGE;
+            else 
+                nextState <= MOVE_RIGHT;
+            end if;
+          --------------------------------------------------------ADD_SNAKE_RIGHT
+          when ADD_SNAKE_RIGHT =>
+            addSnakeEn <= ACTIVE;
+            if((tail= 0 and head = 15) or (tail= 15 and head = 0)) then
+                nextState <= LOSE_MODE;
+            else
+            nextState <= MOVE_RIGHT;
+            end if;
+             --------------------------------------------------------ADD_SNAKE_LEFT
+          when ADD_SNAKE_LEFT =>
+            addSnakeEn <= ACTIVE;
+            if((tail= 0 and head = 15) or (tail= 15 and head = 0)) then
+                nextState <= LOSE_MODE;
+            else
+            nextState <= MOVE_RIGHT;
+            end if;
+          --------------------------------------------------------SUB_HEAD_RIGHT
+          when SUB_HEAD_RIGHT =>
+            subHeadRightEn <= ACTIVE;
+            nextState <= MOVE_RIGHT;
+          --------------------------------------------------------SUB_TAIL_RIGHT
+          when SUB_TAIL_RIGHT =>
+            subTailRightEn <= ACTIVE;
+            nextState <= MOVE_RIGHT;
+          --------------------------------------------------------RIGHT_EDGE
+          when RIGHT_EDGE =>
+            shiftRightMode <= not ACTIVE;
+            if(edgeMode = wrap and snakeEn = ACTIVE) then
+                nextState <= WRAP_RIGHT;
+            elsif(edgeMode = bounce and snakeEn = ACTIVE) then
+                nextState <= BOUNCE_RIGHT;
+            end if;
+          --------------------------------------------------------WRAP_RIGHT
+          when WRAP_RIGHT =>
+            wrapRightMode <= ACTIVE;
+            if(tail = 15 and snakeEn = ACTIVE) then
+                nextState <= MOVE_RIGHT;
+            else
+                nextState <= WRAP_RIGHT;
+            end if;
+           --------------------------------------------------------BOUNCE_RIGHT
+           when BOUNCE_RIGHT =>
+            bounceRightMode <= ACTIVE;
+            nextState <= MOVE_LEFT;
+           ---------------------------------------------------------MOVE_LEFT
+           when MOVE_LEFT =>
+            shiftLeftMode <= ACTIVE;
+            if(tail = head and (tailHit <= ACTIVE or headHit <= ACTIVE)) then
+                nextState <= WIN_MODE;
+            elsif(headHit = ACTIVE) then
+                nextState <= SUB_HEAD_LEFT;
+            elsif(tailHit = ACTIVE) then
+                nextState <= SUB_TAIL_LEFT;
+            elsif(snakeMiss <= ACTIVE and snakeEn=ACTIVE) then
+                nextState <= ADD_SNAKE_LEFT;
+            elsif(head = 0 and snakeEn = ACTIVE) then
+                nextState <= LEFT_EDGE;
+            else 
+                nextState <= MOVE_LEFT;
+            end if;  
+          --------------------------------------------------------SUB_HEAD_LEFT
+          when SUB_HEAD_LEFT =>
+            subHeadLeftEn <= ACTIVE;
+            nextState <= MOVE_Left;
+          --------------------------------------------------------SUB_TAIL_LEFT
+          when SUB_TAIL_LEFT =>
+            subTailLeftEn <= ACTIVE;
+            nextState <= MOVE_Left;   
+           --------------------------------------------------------LEFT_EDGE
+          when LEFT_EDGE =>
+            shiftLeftMode <= not ACTIVE;
+            if(edgeMode = wrap and snakeEn = ACTIVE) then
+                nextState <= WRAP_LEFT;
+            elsif(edgeMode = bounce and snakeEn = ACTIVE) then
+                nextState <= BOUNCE_LEFT;
+            end if;  
+            --------------------------------------------------------WRAP_LEFT
+          when WRAP_LEFT =>
+            wrapLeftMode <= ACTIVE;
+            if(tail = 15 and snakeEn = ACTIVE) then
+                nextState <= MOVE_LEFT;
+            else
+                nextState <= WRAP_LEFT;
+            end if;
+            --------------------------------------------------------BOUNCE_LEFT
+           when BOUNCE_LEFT =>
+            bounceLeftMode <= ACTIVE;
+            nextState <= MOVE_RIGHT;  
+             --------------------------------------------------------WIN_MODE
+           when WIN_MODE =>
+            bounceLeftMode <= ACTIVE;
+            nextState <= MOVE_RIGHT;  
+        end case;
+    end process;
+--==================================================================================
+--SNAKE POSITION
+--==================================================================================    
+SNAKE_POSITION: process(shiftLeftMode, shiftRightMode, wrapRightMode, wrapLeftMode,
+bounceLeftMode, bounceRightMode, subTailRightEn, subHeadRightEn, subTailLeftEn,
+subHeadLeftEn, addSnakeEn, startMode, winMode, loseMode);
+    
+end process;
 end Behavioral;
