@@ -456,30 +456,27 @@
     --==================================================================================
     --SNAKE POSITION
     --==================================================================================    
-    SNAKE_POSITION: process(reset, clock, shiftLeftMode, shiftRightMode, wrapRightMode, wrapLeftMode,
-                            bounceLeftMode, bounceRightMode, subTailRightEn, subHeadRightEn, subTailLeftEn,
-                            subHeadLeftEn, addSnakeLeftEn,addSnakeRightEn, startMode, winMode, loseMode)
-        variable tempLEDs: std_logic_vector(15 downto 0) := (others => '0');
-        variable temp_head: integer := 4;
-        variable temp_tail: integer := 11;
-        variable temp_swap: integer;
-    begin
-        if reset = ACTIVE then
-            temp_head := 4; 
-            temp_tail := 11; 
-            tempLEDs := START_LED;
-            -- rest of the process
-        elsif rising_edge(clock) then
+    SNAKE_POSITION: process(reset, clock)
+    variable tempLEDs: std_logic_vector(15 downto 0) := (others => '0');
+    variable temp_head: integer;
+    variable temp_tail: integer;
+    variable temp_swap: integer;
+begin
+    if reset = ACTIVE then
+        temp_head := 4; 
+        temp_tail := 11; 
+        tempLEDs := START_LED;
+    elsif rising_edge(clock) then
+        if snakeEn = ACTIVE then
             if shiftRightMode = ACTIVE then
                 tempLEDs  := '0' & tempLEDs(15 downto 1);
                 temp_head := temp_head - 1;
-                temp_tail := temp_tail -1;
+                temp_tail := temp_tail - 1;
             elsif shiftLeftMode = ACTIVE then
                 tempLEDs  := tempLEDs(14 downto 0) & '0';
                 temp_head := temp_head + 1;
-                temp_tail := temp_tail +1;
-            elsif ((bounceLeftMode = ACTIVE) or (bounceRightMode = ACTIVE)) then
-                
+                temp_tail := temp_tail + 1;
+            elsif (bounceLeftMode = ACTIVE) or (bounceRightMode = ACTIVE) then
                 temp_swap := temp_head;
                 temp_head := temp_tail;
                 temp_tail := temp_swap;
@@ -504,21 +501,24 @@
                     temp_tail := 0;
                 end if;
             elsif addSnakeLeftEn = ACTIVE then 
-                if (temp_tail /= 0) then
+                if temp_tail /= 15 then
+                    tempLEDs(temp_tail + 1) := ACTIVE;
+                    temp_tail := temp_tail + 1;
+                else
+                    tempLEDs(temp_head - 1) := ACTIVE;
+                    temp_head := temp_head - 1;
+                 end if;
+    
+            elsif addSnakeRightEn = ACTIVE then
+                if temp_tail /= 0 then
                     tempLEDs(temp_tail - 1) := ACTIVE;  
                     temp_tail := temp_tail - 1; 
-                elsif (temp_tail = 0) then
+                else
                     tempLEDs(temp_head + 1) := ACTIVE;
-                    temp_head := temp_head +1;
+                    temp_head := temp_head + 1;
                 end if;
-            elsif addSnakeRightEn = ACTIVE then
-                    if(temp_tail /=15) then
-                        tempLEDs(temp_tail + 1) := ACTIVE;
-                        temp_tail := temp_tail + 1;
-                    elsif (temp_tail = 15) then
-                        tempLEDs(temp_head+1) := ACTIVE;
-                        temp_head := temp_head + 1;
-                end if;
+                
+                
             elsif subTailRightEn = ACTIVE then
                 tempLEDs(temp_tail) := not ACTIVE;
                 temp_tail := temp_tail - 1;
@@ -554,12 +554,13 @@
                 temp_tail := 0;
             end if;
         end if;
-        
-        head <= temp_head;
-        tail <= temp_tail;
-        leds <= tempLEDs;
-    end process;
-    
+    end if;
+
+    head <= temp_head;
+    tail <= temp_tail;
+    leds <= tempLEDs;
+end process;
+
     
     
     end Behavioral;
