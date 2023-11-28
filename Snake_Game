@@ -1,22 +1,4 @@
-----------------------------------------------------------------------------------
--- Company: 
--- Engineer: 
--- 
--- Create Date: 11/27/2023 03:01:53 PM
--- Design Name: 
--- Module Name: SnakeGame - Behavioral
--- Project Name: 
--- Target Devices: 
--- Tool Versions: 
--- Description: 
--- 
--- Dependencies: 
--- 
--- Revision:
--- Revision 0.01 - File Created
--- Additional Comments:
--- 
-----------------------------------------------------------------------------------
+
 
 
 library IEEE;
@@ -112,7 +94,7 @@ architecture Behavioral of SnakeGame is
     signal snakeEn: std_logic;
     signal countEn: std_logic;
     signal unsafeOutput: std_logic_vector (15 downto 0);
-    signal activeBits : INTEGER;
+    
     signal head: integer;
     signal tail: integer;
     signal timeOut: std_logic_vector (15 downto 0);
@@ -141,12 +123,13 @@ end process;
 --AXE TIME
 --==================================================================================  
   AXETIME: process(synchOut)
+    variable activeBits: integer;
     begin
-        activeBits <= 0;
+        activeBits := 0;
         Position <= 0;
         for i in 0 to 15 loop
             if synchOut(i) = '1' then
-                activeBits <= activeBits + 1;
+                activeBits := activeBits + 1;
                 Position <= i;
             end if;
         end loop;
